@@ -213,7 +213,7 @@ async function loadModel() {
 }
 
 // ---------- diagnostics ----------
-const APP_BUILD = 'build 7';
+const APP_BUILD = 'build 8 (libllama d38bea3)';
 async function updateDiag(extra = '') {
   const lines = [APP_BUILD, `memory64 supported: ${mem64Ok}, forced compat: ${!mem64Ok || forceCompat}`];
   try { lines.push(`libllama: ${Wllama.getLibllamaVersion()}`); } catch { /* ignore */ }
