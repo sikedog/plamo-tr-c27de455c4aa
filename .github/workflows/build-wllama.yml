@@ -1,0 +1,80 @@
+# Builds the latest wllama (llama.cpp with the PLaMo-3 tokenizer) and pushes the
+# result to the branch "wllama-new" so it can be reviewed before replacing vendor/.
+name: build-wllama
+
+on:
+  workflow_dispatch:
+    inputs:
+      wllama_ref:
+        description: "ngxson/wllama ref (branch, tag or sha). Empty = default branch"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Checkout wllama
+        uses: actions/checkout@v4
+        with:
+          repository: ngxson/wllama
+          ref: ${{ inputs.wllama_ref }}
+          path: wllama
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Show source versions
+        run: |
+          cd wllama
+          git log -1 --format='wllama %h %ci %s'
+          grep -rn "LIBLLAMA_VERSION" src --include=*.ts | head -3 || true
+          grep -rn "PLAMO3" --include=llama.h -r . | head -3 || true
+
+      - name: Install dependencies
+        run: cd wllama && npm ci
+
+      - name: Build wasm (default + compat) with emscripten in docker
+        run: cd wllama && npm run build:wasm
+
+      - name: Build JS bundle
+        run: |
+          cd wllama
+          npm run build:worker
+          npm run build:tsup
+          npm run build:minified
+
+      - name: Collect files
+        run: |
+          set -e
+          cd wllama
+          ls -la esm/index.min.js src/wasm/wllama.wasm compat/wasm/wllama.js compat/wasm/wllama.wasm
+          mkdir -p ../app/vendor/wllama ../app/vendor/compat
+          cp esm/index.min.js        ../app/vendor/wllama/index.js
+          cp src/wasm/wllama.wasm    ../app/vendor/wllama/wllama.wasm
+          cp compat/wasm/wllama.js   ../app/vendor/compat/wllama.js
+          cp compat/wasm/wllama.wasm ../app/vendor/compat/wllama.wasm
+          grep -o 'LIBLLAMA_VERSION="[^"]*"' ../app/vendor/wllama/index.js | head -1
+          strings -n 6 ../app/vendor/wllama/wllama.wasm | grep -i "plamo3" | head -5
+          sha256sum ../app/vendor/wllama/* ../app/vendor/compat/*
+
+      - name: Push to branch wllama-new
+        run: |
+          cd app
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -b wllama-new
+          git add vendor
+          git commit -m "Rebuild wllama with latest llama.cpp (PLaMo-3 tokenizer)"
+          git push --force origin wllama-new
