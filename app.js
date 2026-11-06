@@ -86,7 +86,7 @@ function stage(name) {
     const prev = JSON.parse(localStorage.getItem('plamo.stages') || '[]');
     if (!stageT0) prev.length = 0;
     prev.push(line);
-    localStorage.setItem('plamo.stages', JSON.stringify(prev.slice(-45)));
+    localStorage.setItem('plamo.stages', JSON.stringify(prev.slice(-70)));
   } catch { /* ignore */ }
   updateDiag().catch(() => {});
 }
@@ -98,7 +98,7 @@ const logRing = [];
 function pushLog(level, args) {
   const t = args.map((x) => (typeof x === 'string' ? x : (x && x.message) || String(x))).join(' ').replace(/\s+/g, ' ').slice(0, 220);
   logRing.push(`${level}: ${t}`);
-  if (logRing.length > 14) logRing.shift();
+  if (logRing.length > 40) logRing.shift();
   try { (level === 'E' ? console.error : console.log)(...args); } catch { /* ignore */ }
 }
 const diagLogger = {
@@ -155,6 +155,8 @@ async function loadModel() {
 
   const t0 = performance.now();
   stageT0 = t0;
+  try { localStorage.removeItem('plamo.stages'); } catch { /* ignore */ }
+  logRing.length = 0;
   let progressDone = false;
   stage('start');
   const params = {
@@ -183,6 +185,12 @@ async function loadModel() {
     await wllama.loadModel(blobs, params);
     clearTimeout(hangTimer);
     stage('model loaded into wasm');
+    const ctxInfo = wllama.getLoadedContextInfo();
+    stage(`context: n_ctx=${ctxInfo.n_ctx}, n_vocab=${ctxInfo.n_vocab}`);
+    if (!ctxInfo.n_vocab) {
+      dumpLogs('model info is empty');
+      throw new Error('モデルの読み込みに失敗しました (n_vocab=0)');
+    }
   } catch (err) {
     console.error(err);
     stage(`ERROR: ${err && (err.message || err)}`);
@@ -205,7 +213,7 @@ async function loadModel() {
 }
 
 // ---------- diagnostics ----------
-const APP_BUILD = 'build 6';
+const APP_BUILD = 'build 7';
 async function updateDiag(extra = '') {
   const lines = [APP_BUILD, `memory64 supported: ${mem64Ok}, forced compat: ${!mem64Ok || forceCompat}`];
   try { lines.push(`libllama: ${Wllama.getLibllamaVersion()}`); } catch { /* ignore */ }
@@ -322,6 +330,8 @@ async function translate() {
       console.error(err);
       setStatus('翻訳エラー', 'err');
       toast('翻訳に失敗しました');
+      stage(`translate error: ${err && (err.message || err)}`);
+      dumpLogs('after translate error');
       await updateDiag(`translate error: ${err && (err.message || err)}`);
     }
   } finally {
