@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PLaMo翻訳">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>PLaMo翻訳</title>
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #ffffff; --text: #111827; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2563eb; --accent-2: #7c3aed; --ok: #059669; --warn: #b45309; --err: #dc2626;
+    --out-bg: #eef2ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1020; --card: #141a2e; --text: #e8ecf6; --muted: #98a2b8; --line: #263050;
+      --accent: #5b8cff; --accent-2: #a78bfa; --ok: #34d399; --warn: #fbbf24; --err: #f87171;
+      --out-bg: #1a2347;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Segoe UI", sans-serif;
+    line-height: 1.5; -webkit-text-size-adjust: 100%;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    max-width: 640px; margin: 0 auto;
+  }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .01em; }
+  .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted); white-space: nowrap; }
+  .chip.ok { color: var(--ok); border-color: var(--ok); }
+  .chip.warn { color: var(--warn); border-color: var(--warn); }
+  .chip.err { color: var(--err); border-color: var(--err); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
+  .card h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+  p { margin: 0 0 8px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  textarea, select, input[type=text] {
+    width: 100%; font: inherit; font-size: 16px; color: var(--text); background: transparent;
+    border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; outline: none;
+  }
+  textarea { resize: vertical; min-height: 120px; }
+  textarea:focus, select:focus, input:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .row > .fit { flex: 0 0 auto; }
+  button {
+    font: inherit; font-size: 16px; font-weight: 600; border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer;
+    color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button.danger { background: transparent; color: var(--err); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+  .progress { height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; margin: 10px 0 4px; }
+  .progress > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .2s; }
+  #output { white-space: pre-wrap; word-break: break-word; background: var(--out-bg); border-radius: 12px; padding: 12px; min-height: 64px; font-size: 17px; }
+  #output.empty { color: var(--muted); font-size: 14px; }
+  details { margin-top: 4px; }
+  summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 6px 0; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px; max-height: 220px; overflow: auto; }
+  .hidden { display: none !important; }
+  .toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: #111827; color: #fff; padding: 8px 14px; border-radius: 999px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: .95; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PLaMo翻訳</h1>
+  <span id="status" class="chip">準備中...</span>
+</header>
+
+<!-- First run: download model -->
+<section id="setup" class="card hidden">
+  <h2>最初の準備（1回だけ）</h2>
+  <p>翻訳モデル（約0.5GB）をこの端末に保存します。Wi-Fi接続をおすすめします。保存後は機内モードでも使えます。</p>
+  <div class="row">
+    <button id="btnDownload">モデルをダウンロード</button>
+  </div>
+  <div id="dlWrap" class="hidden">
+    <div class="progress"><i id="dlBar"></i></div>
+    <div id="dlText" class="muted">0%</div>
+    <p class="muted">ダウンロード中は画面を閉じないでください。</p>
+  </div>
+  <p id="iosHint" class="muted hidden">ヒント: Safariの共有ボタンから「ホーム画面に追加」すると、アプリのように起動でき、保存データも消えにくくなります。</p>
+</section>
+
+<!-- Translator -->
+<section id="main" class="hidden">
+  <div class="card">
+    <h2>翻訳する文章（言語は自動判定）</h2>
+    <textarea id="input" placeholder="ここに文章を入力" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:10px">
+      <select id="target" aria-label="翻訳先の言語"></select>
+      <button id="btnTranslate" class="fit">翻訳</button>
+      <button id="btnStop" class="secondary fit hidden">停止</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>翻訳結果</h2>
+    <div id="output" class="empty">ここに結果が表示されます</div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnCopy" class="secondary" disabled>コピー</button>
+      <button id="btnClear" class="secondary">クリア</button>
+    </div>
+    <p id="stats" class="muted" style="margin-top:8px"></p>
+  </div>
+</section>
+
+<!-- Settings -->
+<section id="settings" class="card hidden">
+  <details>
+    <summary>設定・用語集</summary>
+
+    <label for="form">日本語に訳すときの文体</label>
+    <select id="form">
+      <option value="">おまかせ</option>
+      <option value="polite">です・ます（丁寧）</option>
+      <option value="plain">だ・である（常体）</option>
+    </select>
+
+    <label for="context">文脈（任意・例: 空港向け車椅子サービスの社内資料）</label>
+    <textarea id="context" style="min-height:64px" placeholder="状況や分野を書くと訳が安定します"></textarea>
+
+    <label for="glossary">用語集（1行に1つ。「原語 = 訳語」）</label>
+    <textarea id="glossary" style="min-height:96px" placeholder="Fleet Management = フリート管理&#10;Dashboard = ダッシュボード"></textarea>
+
+    <label for="modelSel">モデルファイル</label>
+    <select id="modelSel"></select>
+    <label for="customUrl">モデルのURLを直接指定（任意・.gguf）</label>
+    <input id="customUrl" type="text" inputmode="url" placeholder="https://huggingface.co/.../resolve/main/xxx.gguf" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <label for="mode">プロンプト方式（うまく動かないとき切り替え）</label>
+    <select id="mode">
+      <option value="raw">PFML3（標準）</option>
+      <option value="chat">チャットテンプレート</option>
+    </select>
+
+    <div class="row" style="margin-top:12px">
+      <button id="btnApply" class="secondary">設定を保存して読み込み直す</button>
+      <button id="btnWipe" class="danger">モデルを削除</button>
+    </div>
+
+    <label style="margin-top:14px">診断情報</label>
+    <pre id="diag">-</pre>
+  </details>
+</section>
+
+<div id="toast" class="toast" role="status"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
