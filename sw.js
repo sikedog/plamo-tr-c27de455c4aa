@@ -1,6 +1,6 @@
 // Service worker: app shell and wllama assets are cached for offline use.
 // The model file itself is stored by wllama in OPFS, not here.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `plamo-translate-${VERSION}`;
 const CORE = [
   './',
@@ -22,7 +22,7 @@ self.addEventListener('install', (event) => {
     (async () => {
       const cache = await caches.open(CACHE);
       // one failed file must not block the whole install
-      await Promise.allSettled(CORE.map((url) => cache.add(url)));
+      await Promise.allSettled(CORE.map((url) => cache.add(new Request(url, { cache: 'reload' }))));
       await self.skipWaiting();
     })()
   );
