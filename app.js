@@ -193,8 +193,9 @@ async function loadModel() {
 }
 
 // ---------- diagnostics ----------
+const APP_BUILD = 'build 5';
 async function updateDiag(extra = '') {
-  const lines = [];
+  const lines = [APP_BUILD];
   try { lines.push(`libllama: ${Wllama.getLibllamaVersion()}`); } catch { /* ignore */ }
   lines.push(`mode: ${settings.mode} / backend: ${settings.backend}`);
   if (modelReady && wllama) {
