@@ -3,6 +3,18 @@ import { buildPrompt, cleanOutput, parseGlossary, STOP_STRINGS } from './pfml3.j
 
 const $ = (id) => document.getElementById(id);
 
+// ---------- engine check ----------
+// iOS Safari reports JSPI / 64-bit memory as available but cannot compile the
+// memory64 build ("Memory64 is not enabled"). Probe with a real module and, when
+// it is not supported (or ?forceCompat is in the URL), make wllama pick its 32-bit compat build.
+const MEM64_PROBE = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 1]);
+let mem64Ok = false;
+try { mem64Ok = WebAssembly.validate(MEM64_PROBE); } catch { /* ignore */ }
+const forceCompat = new URLSearchParams(location.search).has('forceCompat');
+if (!mem64Ok || forceCompat) {
+  try { Object.defineProperty(WebAssembly, 'Suspending', { value: undefined, configurable: true, writable: true }); } catch { /* ignore */ }
+}
+
 // ---------- model sources ----------
 const MODEL_REPO = 'pfnet/plamo-3-translate-0.8b-GGUF';
 const MODEL_FILES = [
@@ -193,9 +205,9 @@ async function loadModel() {
 }
 
 // ---------- diagnostics ----------
-const APP_BUILD = 'build 5';
+const APP_BUILD = 'build 6';
 async function updateDiag(extra = '') {
-  const lines = [APP_BUILD];
+  const lines = [APP_BUILD, `memory64 supported: ${mem64Ok}, forced compat: ${!mem64Ok || forceCompat}`];
   try { lines.push(`libllama: ${Wllama.getLibllamaVersion()}`); } catch { /* ignore */ }
   lines.push(`mode: ${settings.mode} / backend: ${settings.backend}`);
   if (modelReady && wllama) {
