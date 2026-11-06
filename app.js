@@ -65,6 +65,25 @@ function setProgress(loaded, total) {
     : `${fmtMB(loaded)} MB`;
 }
 
+// ---------- stage log (kept in localStorage so it survives a force-quit) ----------
+let stageT0 = 0;
+function stage(name) {
+  const sec = stageT0 ? ((performance.now() - stageT0) / 1000).toFixed(1) : '0.0';
+  const line = `[${sec}s] ${name}`;
+  try {
+    const prev = JSON.parse(localStorage.getItem('plamo.stages') || '[]');
+    if (!stageT0) prev.length = 0;
+    prev.push(line);
+    localStorage.setItem('plamo.stages', JSON.stringify(prev.slice(-30)));
+  } catch { /* ignore */ }
+  updateDiag().catch(() => {});
+}
+function savedStages() {
+  try { return JSON.parse(localStorage.getItem('plamo.stages') || '[]'); } catch { return []; }
+}
+window.addEventListener('error', (e) => stage(`window error: ${e.message}`));
+window.addEventListener('unhandledrejection', (e) => stage(`unhandled rejection: ${e.reason && (e.reason.message || e.reason)}`));
+
 // ---------- wllama ----------
 let wllama = null;
 let modelReady = false;
@@ -102,21 +121,36 @@ async function loadModel() {
   setStatus('モデル読み込み中...', 'warn');
 
   const t0 = performance.now();
+  stageT0 = t0;
+  let progressDone = false;
+  stage('start');
   const params = {
-    n_ctx: 2048,
+    n_ctx: 1024,
+    n_parallel: 1,
     useCache: true,
     n_gpu_layers: settings.backend === 'webgpu' ? 99999 : 0,
     progressCallback: ({ loaded, total }) => {
       setProgress(loaded, total);
-      setStatus(total ? `ダウンロード ${Math.round((loaded / total) * 100)}%` : 'ダウンロード中...', 'warn');
+      if (total && loaded >= total) {
+        if (!progressDone) { progressDone = true; stage('download 100%'); }
+        setStatus('保存・読み込み中...（数分かかります）', 'warn');
+      } else {
+        setStatus(total ? `ダウンロード ${Math.round((loaded / total) * 100)}%` : 'ダウンロード中...', 'warn');
+      }
     },
   };
   if (settings.mode === 'chat') params.jinja = true;
 
   try {
-    await wllama.loadModelFromUrl(url, params);
+    const model = await wllama.modelManager.getModelOrDownload({ url }, params);
+    stage('downloaded / cache ready');
+    const blobs = await model.open();
+    stage(`model opened (${blobs.length} file, ${fmtMB(blobs.reduce((a, b) => a + b.size, 0))} MB)`);
+    await wllama.loadModel(blobs, params);
+    stage('model loaded into wasm');
   } catch (err) {
     console.error(err);
+    stage(`ERROR: ${err && (err.message || err)}`);
     const offline = !navigator.onLine;
     setStatus('読み込み失敗', 'err');
     $('btnDownload').disabled = false;
@@ -159,6 +193,8 @@ async function updateDiag(extra = '') {
   } catch { /* ignore */ }
   lines.push(`model url: ${modelUrl()}`);
   if (extra) lines.push(extra);
+  const st = savedStages();
+  if (st.length) lines.push('--- last load stages ---', ...st);
   $('diag').textContent = lines.join('\n');
 }
 
