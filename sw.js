@@ -1,6 +1,6 @@
 // Service worker: app shell and wllama assets are cached for offline use.
 // The model file itself is stored by wllama in OPFS, not here.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `plamo-translate-${VERSION}`;
 const CORE = [
   './',

@@ -1,4 +1,4 @@
-import { Wllama, LoggerWithoutDebug } from './vendor/wllama/index.js';
+import { Wllama } from './vendor/wllama/index.js';
 import { buildPrompt, cleanOutput, parseGlossary, STOP_STRINGS } from './pfml3.js';
 
 const $ = (id) => document.getElementById(id);
@@ -74,15 +74,36 @@ function stage(name) {
     const prev = JSON.parse(localStorage.getItem('plamo.stages') || '[]');
     if (!stageT0) prev.length = 0;
     prev.push(line);
-    localStorage.setItem('plamo.stages', JSON.stringify(prev.slice(-30)));
+    localStorage.setItem('plamo.stages', JSON.stringify(prev.slice(-45)));
   } catch { /* ignore */ }
   updateDiag().catch(() => {});
 }
 function savedStages() {
   try { return JSON.parse(localStorage.getItem('plamo.stages') || '[]'); } catch { return []; }
 }
+// ring buffer of the last native (llama.cpp) log lines, to see why a load aborts
+const logRing = [];
+function pushLog(level, args) {
+  const t = args.map((x) => (typeof x === 'string' ? x : (x && x.message) || String(x))).join(' ').replace(/\s+/g, ' ').slice(0, 220);
+  logRing.push(`${level}: ${t}`);
+  if (logRing.length > 14) logRing.shift();
+  try { (level === 'E' ? console.error : console.log)(...args); } catch { /* ignore */ }
+}
+const diagLogger = {
+  debug() {},
+  log: (...a) => pushLog('I', a),
+  warn: (...a) => pushLog('W', a),
+  error: (...a) => pushLog('E', a),
+};
+function dumpLogs(reason) {
+  stage(`native log (${reason}):`);
+  logRing.splice(0).forEach((l) => stage(l));
+}
 window.addEventListener('error', (e) => stage(`window error: ${e.message}`));
-window.addEventListener('unhandledrejection', (e) => stage(`unhandled rejection: ${e.reason && (e.reason.message || e.reason)}`));
+window.addEventListener('unhandledrejection', (e) => {
+  stage(`unhandled rejection: ${e.reason && (e.reason.message || e.reason)}`);
+  setTimeout(() => dumpLogs('after rejection'), 800);
+});
 
 // ---------- wllama ----------
 let wllama = null;
@@ -94,7 +115,7 @@ function abs(path) { return new URL(path, location.href).href; }
 function createWllama() {
   const w = new Wllama(
     { default: abs('./vendor/wllama/wllama.wasm') },
-    { allowOffline: true, logger: LoggerWithoutDebug }
+    { allowOffline: true, logger: diagLogger }
   );
   // self-hosted compat build (used automatically on Safari / iOS)
   w.setCompat({ wasm: abs('./vendor/compat/wllama.wasm'), worker: abs('./vendor/compat/wllama.js') });
@@ -145,12 +166,15 @@ async function loadModel() {
     const model = await wllama.modelManager.getModelOrDownload({ url }, params);
     stage('downloaded / cache ready');
     const blobs = await model.open();
+    const hangTimer = setTimeout(() => dumpLogs('20s after open, still loading'), 20000);
     stage(`model opened (${blobs.length} file, ${fmtMB(blobs.reduce((a, b) => a + b.size, 0))} MB)`);
     await wllama.loadModel(blobs, params);
+    clearTimeout(hangTimer);
     stage('model loaded into wasm');
   } catch (err) {
     console.error(err);
     stage(`ERROR: ${err && (err.message || err)}`);
+    dumpLogs('after error');
     const offline = !navigator.onLine;
     setStatus('読み込み失敗', 'err');
     $('btnDownload').disabled = false;
